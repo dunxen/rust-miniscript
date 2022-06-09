@@ -176,6 +176,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Terminal<Pk, Ctx> {
 impl<Pk: MiniscriptKey> Liftable<Pk> for Descriptor<Pk> {
     fn lift(&self) -> Result<Semantic<Pk>, Error> {
         match *self {
+            Descriptor::Addr(_) => unimplemented!(),
             Descriptor::Bare(ref bare) => bare.lift(),
             Descriptor::Pkh(ref pkh) => pkh.lift(),
             Descriptor::Wpkh(ref wpkh) => wpkh.lift(),

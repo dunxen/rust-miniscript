@@ -201,6 +201,7 @@ pub fn test_desc_satisfy(cl: &Client, testdata: &TestData, desc: &str) -> Witnes
             // Non-tr descriptors
             // Ecdsa sigs
             let sks_reqd = match derived_desc {
+                Descriptor::Addr(_addr) => unimplemented!(),
                 Descriptor::Bare(bare) => find_sks_ms(&bare.as_inner(), testdata),
                 Descriptor::Pkh(pk) => find_sk_single_key(*pk.as_inner(), testdata),
                 Descriptor::Wpkh(pk) => find_sk_single_key(*pk.as_inner(), testdata),

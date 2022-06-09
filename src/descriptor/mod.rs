@@ -40,6 +40,7 @@ use crate::{
     ToPublicKey, TranslatePk, TranslatePk2,
 };
 
+mod addr;
 mod bare;
 mod segwitv0;
 mod sh;
@@ -47,6 +48,7 @@ mod sortedmulti;
 mod tr;
 
 // Descriptor Exports
+pub use self::addr::Addr;
 pub use self::bare::{Bare, Pkh};
 pub use self::segwitv0::{Wpkh, Wsh, WshInner};
 pub use self::sh::{Sh, ShInner};
@@ -72,6 +74,8 @@ pub type KeyMap = HashMap<DescriptorPublicKey, DescriptorSecretKey>;
 /// Script descriptor
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Descriptor<Pk: MiniscriptKey> {
+    /// A standalone valid address
+    Addr(Addr),
     /// A raw scriptpubkey (including pay-to-pubkey) under Legacy context
     Bare(Bare<Pk>),
     /// Pay-to-PubKey-Hash
@@ -131,6 +135,8 @@ impl<Pk: MiniscriptKey> From<Tr<Pk>> for Descriptor<Pk> {
 /// Descriptor Type of the descriptor
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum DescriptorType {
+    /// Addr descriptor (contains standalone address)
+    Addr(Option<WitnessVersion>),
     /// Bare descriptor(Contains the native P2pk)
     Bare,
     /// Pure Sh Descriptor. Does not contain nested Wsh/Wpkh
@@ -167,6 +173,7 @@ impl DescriptorType {
                 Some(WitnessVersion::V0)
             }
             Bare | Sh | Pkh | ShSortedMulti => None,
+            Addr(witness_version) => *witness_version,
         }
     }
 }
@@ -276,6 +283,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// Get the [DescriptorType] of [Descriptor]
     pub fn desc_type(&self) -> DescriptorType {
         match *self {
+            Descriptor::Addr(ref addr) => DescriptorType::Addr(addr.segwit_version()),
             Descriptor::Bare(ref _bare) => DescriptorType::Bare,
             Descriptor::Pkh(ref _pkh) => DescriptorType::Pkh,
             Descriptor::Wpkh(ref _wpkh) => DescriptorType::Wpkh,
@@ -307,6 +315,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// The signer may not be able to find satisfactions even if one exists.
     pub fn sanity_check(&self) -> Result<(), Error> {
         match *self {
+            Descriptor::Addr(ref addr) => addr.sanity_check(),
             Descriptor::Bare(ref bare) => bare.sanity_check(),
             Descriptor::Pkh(_) => Ok(()),
             Descriptor::Wpkh(ref wpkh) => wpkh.sanity_check(),
@@ -326,6 +335,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// For raw/bare descriptors that don't have an address.
     pub fn address(&self, network: Network) -> Result<Address, Error> {
         match *self {
+            Descriptor::Addr(ref addr) => Ok(addr.address()),
             Descriptor::Bare(_) => Err(Error::BareDescriptorAddr),
             Descriptor::Pkh(ref pkh) => Ok(pkh.address(network)),
             Descriptor::Wpkh(ref wpkh) => Ok(wpkh.address(network)),
@@ -338,6 +348,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// Computes the scriptpubkey of the descriptor.
     pub fn script_pubkey(&self) -> Script {
         match *self {
+            Descriptor::Addr(ref addr) => addr.script_pubkey(),
             Descriptor::Bare(ref bare) => bare.script_pubkey(),
             Descriptor::Pkh(ref pkh) => pkh.script_pubkey(),
             Descriptor::Wpkh(ref wpkh) => wpkh.script_pubkey(),
@@ -356,6 +367,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// will change).
     pub fn unsigned_script_sig(&self) -> Script {
         match *self {
+            Descriptor::Addr(_) => Script::new(),
             Descriptor::Bare(_) => Script::new(),
             Descriptor::Pkh(_) => Script::new(),
             Descriptor::Wpkh(_) => Script::new(),
@@ -373,6 +385,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// If the descriptor is a taproot descriptor.
     pub fn explicit_script(&self) -> Result<Script, Error> {
         match *self {
+            Descriptor::Addr(ref addr) => addr.explicit_script(),
             Descriptor::Bare(ref bare) => Ok(bare.script_pubkey()),
             Descriptor::Pkh(ref pkh) => Ok(pkh.script_pubkey()),
             Descriptor::Wpkh(ref wpkh) => Ok(wpkh.script_pubkey()),
@@ -391,6 +404,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// If the descriptor is a taproot descriptor.
     pub fn script_code(&self) -> Result<Script, Error> {
         match *self {
+            Descriptor::Addr(ref addr) => addr.script_code(),
             Descriptor::Bare(ref bare) => Ok(bare.ecdsa_sighash_script_code()),
             Descriptor::Pkh(ref pkh) => Ok(pkh.ecdsa_sighash_script_code()),
             Descriptor::Wpkh(ref wpkh) => Ok(wpkh.ecdsa_sighash_script_code()),
@@ -408,6 +422,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
         S: Satisfier<Pk>,
     {
         match *self {
+            Descriptor::Addr(_) => Err(Error::CouldNotSatisfy),
             Descriptor::Bare(ref bare) => bare.get_satisfaction(satisfier),
             Descriptor::Pkh(ref pkh) => pkh.get_satisfaction(satisfier),
             Descriptor::Wpkh(ref wpkh) => wpkh.get_satisfaction(satisfier),
@@ -425,6 +440,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
         S: Satisfier<Pk>,
     {
         match *self {
+            Descriptor::Addr(_) => Err(Error::CouldNotSatisfy),
             Descriptor::Bare(ref bare) => bare.get_satisfaction_mall(satisfier),
             Descriptor::Pkh(ref pkh) => pkh.get_satisfaction_mall(satisfier),
             Descriptor::Wpkh(ref wpkh) => wpkh.get_satisfaction_mall(satisfier),
@@ -458,6 +474,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
     pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
         let weight = match *self {
+            Descriptor::Addr(_) => Err(Error::CouldNotSatisfy)?,
             Descriptor::Bare(ref bare) => bare.max_satisfaction_weight()?,
             Descriptor::Pkh(ref pkh) => pkh.max_satisfaction_weight(),
             Descriptor::Wpkh(ref wpkh) => wpkh.max_satisfaction_weight(),
@@ -488,6 +505,7 @@ where
         Q: MiniscriptKey,
     {
         let desc = match *self {
+            Descriptor::Addr(ref addr) => Descriptor::Addr(addr.translate_pk(&mut fpk, &mut fpkh)?),
             Descriptor::Bare(ref bare) => Descriptor::Bare(bare.translate_pk(&mut fpk, &mut fpkh)?),
             Descriptor::Pkh(ref pk) => Descriptor::Pkh(pk.translate_pk(&mut fpk, &mut fpkh)?),
             Descriptor::Wpkh(ref pk) => Descriptor::Wpkh(pk.translate_pk(&mut fpk, &mut fpkh)?),
@@ -506,6 +524,7 @@ impl<Pk: MiniscriptKey> ForEachKey<Pk> for Descriptor<Pk> {
         Pk::Hash: 'a,
     {
         match *self {
+            Descriptor::Addr(_) => true,
             Descriptor::Bare(ref bare) => bare.for_each_key(pred),
             Descriptor::Pkh(ref pkh) => pkh.for_each_key(pred),
             Descriptor::Wpkh(ref wpkh) => wpkh.for_each_key(pred),
@@ -661,6 +680,7 @@ where
     /// Parse an expression tree into a descriptor
     fn from_tree(top: &expression::Tree) -> Result<Descriptor<Pk>, Error> {
         Ok(match (top.name, top.args.len() as u32) {
+            ("addr", 1) => Descriptor::Addr(Addr::from_tree(top)?),
             ("pkh", 1) => Descriptor::Pkh(Pkh::from_tree(top)?),
             ("wpkh", 1) => Descriptor::Wpkh(Wpkh::from_tree(top)?),
             ("sh", 1) => Descriptor::Sh(Sh::from_tree(top)?),
@@ -697,6 +717,7 @@ where
 impl<Pk: MiniscriptKey> fmt::Debug for Descriptor<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Descriptor::Addr(ref addr) => write!(f, "{:?}", addr),
             Descriptor::Bare(ref sub) => write!(f, "{:?}", sub),
             Descriptor::Pkh(ref pkh) => write!(f, "{:?}", pkh),
             Descriptor::Wpkh(ref wpkh) => write!(f, "{:?}", wpkh),
@@ -710,6 +731,7 @@ impl<Pk: MiniscriptKey> fmt::Debug for Descriptor<Pk> {
 impl<Pk: MiniscriptKey> fmt::Display for Descriptor<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Descriptor::Addr(ref addr) => write!(f, "{}", addr),
             Descriptor::Bare(ref sub) => write!(f, "{}", sub),
             Descriptor::Pkh(ref pkh) => write!(f, "{}", pkh),
             Descriptor::Wpkh(ref wpkh) => write!(f, "{}", wpkh),

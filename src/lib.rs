@@ -504,6 +504,10 @@ pub trait ForEachKey<Pk: MiniscriptKey> {
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
+    /// No script code for Addr descriptor
+    AddrNoScriptCode,
+    /// No explicit script code for Addr descriptor
+    AddrNoExplicitScript,
     /// Opcode appeared which is not part of the script subset
     InvalidOpcode(opcodes::All),
     /// Some opcode occurred followed by `OP_VERIFY` when it had
@@ -599,6 +603,8 @@ const MAX_SCRIPT_SIZE: u32 = 10000;
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Error::AddrNoScriptCode => write!(f, "No script code for addr descriptors"),
+            Error::AddrNoExplicitScript => write!(f, "No script code for addr descriptors"),
             Error::InvalidOpcode(op) => write!(f, "invalid opcode {}", op),
             Error::NonMinimalVerify(ref tok) => write!(f, "{} VERIFY", tok),
             Error::InvalidPush(ref push) => write!(f, "invalid push {:?}", push), // TODO hexify this
@@ -680,7 +686,9 @@ impl error::Error for Error {
         use self::Error::*;
 
         match self {
-            InvalidOpcode(_)
+            AddrNoScriptCode
+            | AddrNoExplicitScript
+            | InvalidOpcode(_)
             | NonMinimalVerify(_)
             | InvalidPush(_)
             | CmsTooManyKeys(_)

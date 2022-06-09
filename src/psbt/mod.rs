@@ -1041,6 +1041,7 @@ fn update_input_with_descriptor_helper(
         input.bip32_derivation = bip32_derivation.into_inner();
 
         match &derived {
+            Descriptor::Addr(_) => {}
             Descriptor::Bare(_) | Descriptor::Pkh(_) | Descriptor::Wpkh(_) => {}
             Descriptor::Sh(sh) => match sh.as_inner() {
                 descriptor::ShInner::Wsh(wsh) => {

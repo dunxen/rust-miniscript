@@ -16,8 +16,9 @@
 
 use std::str::FromStr;
 
+use bitcoin::util::address::WitnessVersion;
 use miniscript::descriptor::DescriptorType;
-use miniscript::Descriptor;
+use miniscript::{Descriptor, DummyKey};
 
 fn main() {
     let desc = miniscript::Descriptor::<bitcoin::PublicKey>::from_str(
@@ -58,6 +59,7 @@ fn main() {
         ),
         "21020202020202020202020202020202020202020202020202020202020202020202ac"
     );
+    println!("{}", desc);
 
     // In a similar fashion we can parse a wrapped segwit script.
     let desc = miniscript::Descriptor::<bitcoin::PublicKey>::from_str(
@@ -65,4 +67,13 @@ fn main() {
     )
     .unwrap();
     assert!(desc.desc_type() == DescriptorType::ShWsh);
+    println!("{}", desc);
+
+    // We can also parse a simple addr(ADDR) descriptor
+    let desc = miniscript::Descriptor::<DummyKey>::from_str(
+        "addr(bcrt1q9qawepur0zfprc6w3frcl3rujwfpx7exuuf44t)",
+    )
+    .unwrap();
+    assert!(desc.desc_type() == DescriptorType::Addr(Some(WitnessVersion::V0)));
+    println!("{}", desc);
 }
